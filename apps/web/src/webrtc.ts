@@ -1,8 +1,9 @@
 import { CHUNK_SIZE, decodeControl, encodeControl, type FileMessage, type SignalMessage } from '@qrshare/protocol';
 
 export type PeerCallbacks = {
-  onState: (state: RTCPeerConnectionState) => void;
+  onState: (state: RTCPeerConnectionState | 'connected' | 'closed') => void;
   onControl: (message: FileMessage) => void;
+  onSignal: (message: SignalMessage) => void;
   onBytes: (bytes: number) => void;
   onError: (error: Error) => void;
 };
@@ -17,7 +18,7 @@ export class PeerConnection {
     this.callbacks = callbacks;
     this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
     this.pc.onicecandidate = (event) => {
-      if (event.candidate) callbacks.onControl({ type: 'cancel' });
+      if (event.candidate) callbacks.onSignal({ type: 'ice-candidate', candidate: event.candidate.toJSON() });
     };
     this.pc.onconnectionstatechange = () => callbacks.onState(this.pc.connectionState);
     this.pc.ondatachannel = (event) => this.attachChannel(event.channel);
