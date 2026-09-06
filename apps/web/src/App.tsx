@@ -7,8 +7,8 @@ import { parseSessionQr, renderSessionQr } from './qr';
 import { Scanner } from './scanner';
 
 const SIGNALING_URL = process.env.NEXT_PUBLIC_SIGNALING_URL ??
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+  (process.env.NODE_ENV === 'production' && typeof window !== 'undefined'
+    ? `wss://${window.location.host}/api/ws`
     : 'ws://localhost:8787');
 type IncomingFile = { name: string; size: number; mime: string; received: number; chunks: ArrayBuffer[] };
 type ServerMessage = { type: string; sessionId?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit; message?: string };
