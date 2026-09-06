@@ -73,12 +73,16 @@ export class PeerConnection {
     this.channel.send(encodeControl(message));
   }
 
-  async sendFile(file: File, onProgress: (sent: number) => void) {
-    if (!this.channel || this.channel.readyState !== 'open') throw new Error('Peer is not connected.');
+  sendFileHeader(file: File): string {
     const id = crypto.randomUUID();
-    const chunks = Math.ceil(file.size / CHUNK_SIZE);
-    this.sendControl({ type: 'file-start', id, name: file.name, size: file.size, mime: file.type || 'application/octet-stream', chunks });
+    this.sendControl({ type: 'file-start', id, name: file.name, size: file.size, mime: file.type || 'application/octet-stream', chunks: Math.ceil(file.size / CHUNK_SIZE) });
+    return id;
+  }
+
+  async sendFileData(file: File, id: string, onProgress: (sent: number) => void) {
+    if (!this.channel || this.channel.readyState !== 'open') throw new Error('Peer is not connected.');
     let sent = 0;
+    const chunks = Math.ceil(file.size / CHUNK_SIZE);
     for (let index = 0; index < chunks; index++) {
       const buffer = await file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE)).arrayBuffer();
       while (this.channel.bufferedAmount > CHUNK_SIZE * 8) {
