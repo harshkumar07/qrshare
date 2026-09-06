@@ -2,25 +2,23 @@
   "name": "@qrshare/web",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "next dev",
+    "build": "next build",
     "test": "tsc --noEmit"
   },
   "dependencies": {
     "@qrshare/protocol": "*",
     "html5-qrcode": "latest",
+    "next": "latest",
     "qrcode": "latest",
     "react": "latest",
-    "react-dom": "latest",
-    "vite": "latest"
+    "react-dom": "latest"
   },
   "devDependencies": {
+    "@types/qrcode": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "@types/qrcode": "latest",
-    "@vitejs/plugin-react": "latest",
     "typescript": "latest"
   }
 }
