@@ -20,20 +20,17 @@ export class PeerConnection {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun.cloudflare.com:3478' },
-        ...(process.env.NEXT_PUBLIC_TURN_URL ? [{
-          urls: process.env.NEXT_PUBLIC_TURN_URL,
-          username: process.env.NEXT_PUBLIC_TURN_USERNAME,
-          credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
-        }] : []),
       ],
     });
+
     this.pc.onicecandidate = (event) => {
       if (event.candidate) callbacks.onSignal({ type: 'ice-candidate', candidate: event.candidate.toJSON() });
     };
-    this.pc.onicecandidateerror = (event) => {
-      callbacks.onError(new Error(`ICE server error (${event.errorCode}). Direct connection may require TURN.`));
-    };
+
+    // ICE 701 is an ICE-server diagnostic, not a peer-connection failure.
+    // A failed STUN server must not abort an otherwise valid direct connection.
+    this.pc.onicecandidateerror = () => undefined;
+
     this.pc.onconnectionstatechange = () => callbacks.onState(this.pc.connectionState);
     this.pc.ondatachannel = (event) => this.attachChannel(event.channel);
     if (initiator) this.attachChannel(this.pc.createDataChannel('files', { ordered: true }));
