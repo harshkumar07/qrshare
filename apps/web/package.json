@@ -7,7 +7,7 @@
     "@qrshare/protocol": "*",
     "@vercel/functions": "latest",
     "html5-qrcode": "latest",
-    "next": "16.3.4",
+    "next": "16.2.12",
     "qrcode": "latest",
     "react": "latest",
     "react-dom": "latest",
