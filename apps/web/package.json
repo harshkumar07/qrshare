@@ -5,17 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "test": "tsc --noEmit"
   },
   "dependencies": {
     "@qrshare/protocol": "*",
-    "@vitejs/plugin-react": "latest",
     "html5-qrcode": "latest",
     "qrcode": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "vite": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/qrcode": "latest",
+    "@vitejs/plugin-react": "latest",
     "typescript": "latest"
   }
 }
