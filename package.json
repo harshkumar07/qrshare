@@ -2,7 +2,7 @@
   "name": "qrshare",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["apps/*"],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
     "dev:signaling": "npm --workspace apps/signaling run dev",
