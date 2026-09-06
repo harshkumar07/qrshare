@@ -108,7 +108,9 @@ export class PeerConnection {
       sent += buffer.byteLength;
       onProgress(sent);
     }
-    this.sendControl({ type: 'file-end', id });
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    const sha256 = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+    this.sendControl({ type: 'file-end', id, sha256 });
   }
 
   close() { this.channel?.close(); this.pc.close(); }

@@ -31,9 +31,13 @@ export function GET() {
   return experimental_upgradeWebSocket((ws) => {
     let sessionId: string | undefined;
     ws.on('message', (raw) => {
-      if (raw.byteLength > MAX_MESSAGE_BYTES) { send(ws, { type: 'error', message: 'Signaling message is too large.' }); return; }
+      const rawText = raw.toString();
+      if (new TextEncoder().encode(rawText).byteLength > MAX_MESSAGE_BYTES) {
+        send(ws, { type: 'error', message: 'Signaling message is too large.' });
+        return;
+      }
       try {
-        const message = JSON.parse(raw.toString()) as Record<string, unknown>;
+        const message = JSON.parse(rawText) as Record<string, unknown>;
         if (message.type === 'create') {
           if (sessionId) { send(ws, { type: 'error', message: 'Session already created.' }); return; }
           sessionId = randomUUID();

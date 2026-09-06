@@ -35,19 +35,19 @@ async function sha256(chunks: BlobPart[]): Promise<string> {
 export default function App() {
   const [mode, setMode] = useState<'home' | 'sender' | 'receiver'>('home');
   const [status, setStatus] = useState('Choose how to connect.');
-  const [qr, setQr] = useState<string>();
+  const [qr, setQr] = useState<string | undefined>(undefined);
   const [files, setFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
   const [accepted, setAccepted] = useState(false);
-  const [incoming, setIncoming] = useState<IncomingFile>();
+  const [incoming, setIncoming] = useState<IncomingFile | undefined>(undefined);
   const [completed, setCompleted] = useState<CompletedFile[]>([]);
-  const [error, setError] = useState<string>();
-  const wsRef = useRef<WebSocket>();
-  const peerRef = useRef<PeerConnection>();
+  const [error, setError] = useState<string | undefined>(undefined);
+  const wsRef = useRef<WebSocket | undefined>(undefined);
+  const peerRef = useRef<PeerConnection | undefined>(undefined);
   const acceptedRef = useRef(false);
-  const incomingRef = useRef<IncomingFile>();
+  const incomingRef = useRef<IncomingFile | undefined>(undefined);
   const pendingFilesRef = useRef<File[]>([]);
-  const announcedIdRef = useRef<string>();
+  const announcedIdRef = useRef<string | undefined>(undefined);
   const sendingRef = useRef(false);
 
   const sendSignal = useCallback((message: SignalMessage | Record<string, unknown>) => {
