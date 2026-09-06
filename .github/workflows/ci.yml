@@ -6,13 +6,30 @@ on:
   pull_request:
 
 jobs:
-  build:
+  protocol:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: { node-version: 22 }
       - run: npm install
-      - run: npm run test
-      - run: npm run build
+      - run: npm run test --workspace packages/protocol
+
+  signaling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install
+      - run: npm run test --workspace apps/signaling
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install
+      - run: npm run test --workspace apps/web
+      - run: npm run build --workspace apps/web
