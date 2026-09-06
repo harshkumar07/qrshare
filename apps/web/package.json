@@ -9,6 +9,7 @@
     "test": "tsc --noEmit"
   },
   "dependencies": {
+    "@qrshare/protocol": "*",
     "@vitejs/plugin-react": "latest",
     "html5-qrcode": "latest",
     "qrcode": "latest",
@@ -16,6 +17,5 @@
     "react-dom": "latest",
     "vite": "latest",
     "typescript": "latest"
-  },
-  "devDependencies": {}
+  }
 }
