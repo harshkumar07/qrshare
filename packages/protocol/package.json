@@ -4,5 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
-  "types": "src/index.ts"
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "latest"
+  }
 }
