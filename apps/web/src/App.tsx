@@ -1,0 +1,167 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FileMessage, SessionPayload, SignalMessage } from '@qrshare/protocol';
+import { PeerConnection } from './webrtc';
+import { parseSessionQr, renderSessionQr } from './qr';
+import { Scanner } from './scanner';
+import './styles.css';
+
+const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'ws://localhost:8787';
+
+type IncomingFile = { name: string; size: number; mime: string; received: number; chunks: ArrayBuffer[] };
+
+function connect(url: string, onMessage: (message: any) => void, onError: (message: string) => void) {
+  const ws = new WebSocket(url);
+  ws.onmessage = (event) => {
+    try { onMessage(JSON.parse(event.data)); } catch { onError('Received invalid signaling data.'); }
+  };
+  ws.onerror = () => onError('Signaling connection failed.');
+  return ws;
+}
+
+export default function App() {
+  const [mode, setMode] = useState<'home' | 'sender' | 'receiver'>('home');
+  const [status, setStatus] = useState('Choose how to connect.');
+  const [qr, setQr] = useState<string>();
+  const [files, setFiles] = useState<File[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [incoming, setIncoming] = useState<IncomingFile>();
+  const [downloadUrl, setDownloadUrl] = useState<string>();
+  const [error, setError] = useState<string>();
+  const wsRef = useRef<WebSocket>();
+  const peerRef = useRef<PeerConnection>();
+  const acceptedRef = useRef(false);
+  const incomingRef = useRef<IncomingFile>();
+
+  const sendSignal = useCallback((message: SignalMessage | Record<string, unknown>) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(message));
+  }, []);
+
+  const makePeer = useCallback((initiator: boolean) => {
+    peerRef.current?.close();
+    peerRef.current = new PeerConnection({
+      onState: (state) => {
+        if (state === 'connected') setStatus('Peer connected.');
+        else if (state === 'failed') setStatus('Peer connection failed.');
+      },
+      onSignal: sendSignal,
+      onBytes: (bytes) => {
+        const current = incomingRef.current;
+        if (!current) return;
+        current.received += bytes;
+        setIncoming({ ...current });
+      },
+      onError: (e) => setError(e.message),
+      onControl: (message) => {
+        if (message.type === 'file-start') {
+          const next = { name: message.name, size: message.size, mime: message.mime, received: 0, chunks: [] };
+          incomingRef.current = next;
+          setIncoming(next);
+          setStatus(`Incoming file: ${message.name}`);
+        } else if (message.type === 'file-end') {
+          const current = incomingRef.current;
+          if (!current) return;
+          const url = URL.createObjectURL(new Blob(current.chunks, { type: current.mime }));
+          setDownloadUrl(url);
+          setStatus('Transfer complete.');
+        }
+      },
+    }, initiator);
+  }, [sendSignal]);
+
+  const startSender = useCallback(() => {
+    setMode('sender'); setError(undefined); setStatus('Creating session…');
+    const ws = connect(SIGNALING_URL, (message) => {
+      if (message.type === 'created') {
+        const payload: SessionPayload = { v: 1, sessionId: message.sessionId, signalingUrl: SIGNALING_URL };
+        void renderSessionQr(payload).then(setQr);
+        setStatus('Waiting for receiver to scan…');
+      } else if (message.type === 'peer-joined') {
+        makePeer(true);
+        void peerRef.current?.createOffer().then((sdp) => sendSignal({ type: 'offer', sdp }));
+        setStatus('Receiver found. Establishing secure connection…');
+      } else if (message.type === 'answer') {
+        void peerRef.current?.acceptAnswer(message.sdp);
+      } else if (message.type === 'ice-candidate') {
+        void peerRef.current?.addCandidate(message.candidate);
+      } else if (message.type === 'error') setError(message.message);
+    }, setError);
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'create' }));
+    wsRef.current = ws;
+  }, [makePeer, sendSignal]);
+
+  const joinSession = useCallback((payload: SessionPayload) => {
+    setMode('receiver'); setError(undefined); setStatus('Joining session…');
+    const ws = connect(payload.signalingUrl, (message) => {
+      if (message.type === 'joined') setStatus('Joined. Waiting for sender…');
+      else if (message.type === 'offer') {
+        makePeer(false);
+        void peerRef.current?.acceptOffer(message.sdp).then((sdp) => sendSignal({ type: 'answer', sdp }));
+      } else if (message.type === 'ice-candidate') void peerRef.current?.addCandidate(message.candidate);
+      else if (message.type === 'peer-left') setStatus('Sender disconnected.');
+      else if (message.type === 'error') setError(message.message);
+    }, setError);
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'join', sessionId: payload.sessionId, role: 'receiver' }));
+    wsRef.current = ws;
+  }, [makePeer, sendSignal]);
+
+  const onScan = useCallback((text: string) => {
+    try { joinSession(parseSessionQr(text)); } catch (e) { setError(e instanceof Error ? e.message : 'Invalid QR code.'); }
+  }, [joinSession]);
+
+  useEffect(() => () => { peerRef.current?.close(); wsRef.current?.close(); if (downloadUrl) URL.revokeObjectURL(downloadUrl); }, [downloadUrl]);
+
+  const sendFiles = async () => {
+    if (!peerRef.current || !files.length) return;
+    if (!acceptedRef.current) return;
+    setStatus('Sending files…');
+    let total = files.reduce((sum, file) => sum + file.size, 0); let sentTotal = 0;
+    for (const file of files) {
+      await peerRef.current.sendFile(file, (sent) => setProgress(Math.round(((sentTotal + sent) / total) * 100)));
+      sentTotal += file.size;
+    }
+    setProgress(100); setStatus('All files sent.');
+  };
+
+  const acceptIncoming = () => { acceptedRef.current = true; peerRef.current?.sendControl({ type: 'accept' }); setStatus('Accepted. Sender can now transfer the file.'); };
+
+  useEffect(() => {
+    const original = peerRef.current;
+    return () => original?.close();
+  }, []);
+
+  return <main className="app">
+    <section className="card">
+      <div className="brand">QRShare</div>
+      <p className="tagline">Send files directly between nearby devices.</p>
+      {error && <div className="error">{error}</div>}
+
+      {mode === 'home' && <div className="actions">
+        <button onClick={startSender}>Send files</button>
+        <button className="secondary" onClick={() => setMode('receiver')}>Receive files</button>
+      </div>}
+
+      {mode === 'sender' && <>
+        <label className="file-picker">Select files
+          <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
+        </label>
+        {files.length > 0 && <div className="files">{files.map((f) => <div key={`${f.name}-${f.size}`}>{f.name} · {(f.size / 1024 / 1024).toFixed(2)} MB</div>)}</div>}
+        {qr && <img className="qr" src={qr} alt="Scan this QR code to receive the files" />}
+        <p className="status">{status}</p>
+        {progress > 0 && <progress max="100" value={progress} />}
+        <button disabled={!files.length || status !== 'Peer connected.' || !acceptedRef.current} onClick={() => void sendFiles()}>Send selected files</button>
+      </>}
+
+      {mode === 'receiver' && !downloadUrl && <>
+        {status.startsWith('Choose') || status === 'Joining session…' || status === 'Joined. Waiting for sender…' ? <>
+          <Scanner onScan={onScan} />
+          <p className="status">Point your camera at the sender's QR code.</p>
+          <textarea placeholder="Or paste the QR payload here" onChange={(e) => { if (e.target.value.trim()) { try { joinSession(parseSessionQr(e.target.value)); } catch { /* keep scanner available */ } } }} />
+        </> : null}
+        {incoming && <div className="incoming"><strong>{incoming.name}</strong><span>{(incoming.size / 1024 / 1024).toFixed(2)} MB</span><button onClick={acceptIncoming}>Accept transfer</button></div>}
+      </>}
+
+      {downloadUrl && <div className="complete"><p>File received successfully.</p><a href={downloadUrl} download={incoming?.name}>Download {incoming?.name}</a></div>}
+      {mode !== 'home' && <button className="back" onClick={() => { peerRef.current?.close(); wsRef.current?.close(); setMode('home'); setQr(undefined); setIncoming(undefined); setDownloadUrl(undefined); setProgress(0); setStatus('Choose how to connect.'); }}>Start over</button>}
+    </section>
+  </main>;
+}
