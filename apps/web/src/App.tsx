@@ -46,6 +46,7 @@ export default function App() {
   const peerRef = useRef<PeerConnection | undefined>(undefined);
   const acceptedRef = useRef(false);
   const incomingRef = useRef<IncomingFile | undefined>(undefined);
+  const pendingReceiverCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const pendingFilesRef = useRef<File[]>([]);
   const announcedIdRef = useRef<string | undefined>(undefined);
   const sendingRef = useRef(false);
@@ -117,10 +118,26 @@ export default function App() {
 
   const joinSession = useCallback((payload: SessionPayload) => {
     setMode('receiver'); setError(undefined); setStatus('Joining secure session…');
+    pendingReceiverCandidatesRef.current = [];
     const ws = connect(payload.signalingUrl, (message) => {
       if (message.type === 'joined') setStatus('Connected to session. Waiting for sender…');
-      else if (message.type === 'offer' && message.sdp) { makePeer(false); void peerRef.current?.acceptOffer(message.sdp).then((sdp) => sendSignal({ type: 'answer', sdp })).catch((e) => setError(e instanceof Error ? e.message : 'Could not accept offer.')); }
-      else if (message.type === 'ice-candidate' && message.candidate) void peerRef.current?.addCandidate(message.candidate).catch((e) => setError(e instanceof Error ? e.message : 'Could not add ICE candidate.'));
+      else if (message.type === 'offer' && message.sdp) {
+        makePeer(false);
+        const pendingCandidates = pendingReceiverCandidatesRef.current.splice(0);
+        void (async () => {
+          try {
+            await peerRef.current?.acceptOffer(message.sdp!);
+            for (const candidate of pendingCandidates) await peerRef.current?.addCandidate(candidate);
+            const sdp = await peerRef.current?.createAnswer;
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Could not accept offer.');
+          }
+        })();
+      }
+      else if (message.type === 'ice-candidate' && message.candidate) {
+        if (peerRef.current) void peerRef.current.addCandidate(message.candidate).catch((e) => setError(e instanceof Error ? e.message : 'Could not add ICE candidate.'));
+        else pendingReceiverCandidatesRef.current.push(message.candidate);
+      }
       else if (message.type === 'peer-left') setStatus('Sender disconnected.');
       else if (message.type === 'error') setError(message.message ?? 'Signaling error.');
     }, setError);
@@ -129,7 +146,7 @@ export default function App() {
   }, [makePeer, sendSignal]);
 
   const onScan = useCallback((text: string) => { try { joinSession(parseSessionQr(text)); } catch (e) { setError(e instanceof Error ? e.message : 'Invalid QR code.'); } }, [joinSession]);
-  useEffect(() => () => { peerRef.current?.close(); wsRef.current?.close(); }, []);
+  useEffect(() => () => { peerRef.current?.close(); wsRef.current?.close(); pendingReceiverCandidatesRef.current = []; }, []);
 
   const prepareSend = () => {
     if (!peerRef.current || !files.length || status !== 'Peer connected.') return;
@@ -141,7 +158,7 @@ export default function App() {
   const rejectIncoming = () => { peerRef.current?.sendControl({ type: 'reject' }); setIncoming(undefined); incomingRef.current = undefined; setStatus('Transfer rejected.'); };
   const reset = () => {
     peerRef.current?.close(); wsRef.current?.close(); completed.forEach((file) => URL.revokeObjectURL(file.url));
-    pendingFilesRef.current = []; announcedIdRef.current = undefined; incomingRef.current = undefined; sendingRef.current = false;
+    pendingFilesRef.current = []; announcedIdRef.current = undefined; incomingRef.current = undefined; pendingReceiverCandidatesRef.current = []; sendingRef.current = false;
     setMode('home'); setQr(undefined); setFiles([]); setIncoming(undefined); setCompleted([]); setProgress(0); setAccepted(false); acceptedRef.current = false; setError(undefined); setStatus('Choose how to connect.');
   };
 
