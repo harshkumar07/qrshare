@@ -5,6 +5,7 @@
   "scripts": { "dev": "next dev", "build": "next build", "test": "tsc --noEmit" },
   "dependencies": {
     "@qrshare/protocol": "*",
+    "@upstash/redis": "1.38.4",
     "@vercel/functions": "latest",
     "html5-qrcode": "latest",
     "next": "16.2.12",
