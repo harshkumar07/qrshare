@@ -9,16 +9,19 @@
   },
   "dependencies": {
     "@qrshare/protocol": "*",
+    "@vercel/functions": "latest",
     "html5-qrcode": "latest",
     "next": "latest",
     "qrcode": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "ws": "latest"
   },
   "devDependencies": {
     "@types/qrcode": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@types/ws": "latest",
     "typescript": "latest"
   }
 }
