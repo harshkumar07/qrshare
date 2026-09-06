@@ -1,11 +1,15 @@
+'use client';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FileMessage, SessionPayload, SignalMessage } from '@qrshare/protocol';
 import { PeerConnection } from './webrtc';
 import { parseSessionQr, renderSessionQr } from './qr';
 import { Scanner } from './scanner';
-import './styles.css';
 
-const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? (window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.hostname}:8787`);
+const SIGNALING_URL = process.env.NEXT_PUBLIC_SIGNALING_URL ??
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+    : 'ws://localhost:8787');
 type IncomingFile = { name: string; size: number; mime: string; received: number; chunks: ArrayBuffer[] };
 type ServerMessage = { type: string; sessionId?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit; message?: string };
 
