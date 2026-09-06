@@ -4,7 +4,7 @@ export type PeerCallbacks = {
   onState: (state: RTCPeerConnectionState | 'connected' | 'closed') => void;
   onControl: (message: FileMessage) => void;
   onSignal: (message: SignalMessage) => void;
-  onBytes: (bytes: number) => void;
+  onChunk: (chunk: ArrayBuffer) => void;
   onError: (error: Error) => void;
 };
 
@@ -37,7 +37,9 @@ export class PeerConnection {
         const message = decodeControl(event.data);
         if (message) this.callbacks.onControl(message);
       } else if (event.data instanceof ArrayBuffer) {
-        this.callbacks.onBytes(event.data.byteLength);
+        this.callbacks.onChunk(event.data);
+      } else if (event.data instanceof Blob) {
+        void event.data.arrayBuffer().then((buffer) => this.callbacks.onChunk(buffer));
       }
     };
   }
