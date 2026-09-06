@@ -32,16 +32,5 @@ jobs:
         with: { node-version: 22 }
       - run: npm install
       - name: Typecheck web
-        id: typecheck
-        continue-on-error: true
-        run: npm run test --workspace apps/web 2>&1 | tee /tmp/web-test.log; exit ${PIPESTATUS[0]}
-      - name: Upload web typecheck log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-typecheck-log
-          path: /tmp/web-test.log
-      - name: Fail if typecheck failed
-        if: steps.typecheck.outcome == 'failure'
-        run: exit 1
+        run: npm run test --workspace apps/web
       - run: npm run build --workspace apps/web
