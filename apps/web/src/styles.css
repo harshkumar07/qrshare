@@ -1,0 +1,25 @@
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; font-family: Inter, system-ui, sans-serif; background: #f3f4f6; color: #111827; }
+button, input, textarea { font: inherit; }
+.app { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.card { width: min(620px, 100%); background: white; border-radius: 24px; padding: 32px; box-shadow: 0 16px 50px rgba(0,0,0,.08); text-align: center; }
+.brand { font-size: 36px; font-weight: 800; letter-spacing: -1px; }
+.tagline { color: #6b7280; margin: 8px 0 28px; }
+.actions { display: grid; gap: 12px; }
+button { border: 0; border-radius: 12px; padding: 13px 18px; background: #111827; color: white; cursor: pointer; font-weight: 700; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.secondary, .back { background: #e5e7eb; color: #111827; }
+.file-picker { display: block; border: 2px dashed #d1d5db; border-radius: 16px; padding: 24px; cursor: pointer; font-weight: 700; }
+.file-picker input { display: block; width: 100%; margin-top: 12px; }
+.files, .incoming { display: grid; gap: 8px; text-align: left; margin: 18px 0; padding: 14px; background: #f9fafb; border-radius: 12px; }
+.incoming span { color: #6b7280; }
+.qr { width: min(360px, 100%); margin: 20px auto; display: block; border-radius: 12px; }
+.scanner { width: 100%; min-height: 300px; overflow: hidden; border-radius: 16px; margin-bottom: 16px; }
+textarea { width: 100%; min-height: 90px; resize: vertical; border: 1px solid #d1d5db; border-radius: 12px; padding: 12px; margin: 8px 0 16px; }
+.status { color: #4b5563; min-height: 24px; }
+.error { background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 10px; margin-bottom: 16px; }
+.accepted { color: #047857; font-weight: 700; }
+progress { width: 100%; height: 12px; margin: 12px 0 18px; }
+.complete { display: grid; gap: 14px; }
+.complete a { display: inline-block; background: #111827; color: white; text-decoration: none; padding: 13px 18px; border-radius: 12px; font-weight: 700; }
+.back { margin-top: 20px; }
