@@ -161,8 +161,10 @@ export function GET() {
             }
 
             const added = await redis.sadd(membersKey(requested), connectionId);
-            if (!added) {
-              send(ws, { type: 'error', message: 'Could not join session.' });
+            const finalMemberCount = await redis.scard(membersKey(requested));
+            if (!added || finalMemberCount > 2) {
+              if (added) await redis.srem(membersKey(requested), connectionId);
+              send(ws, { type: 'error', message: 'Session is full.' });
               return;
             }
 
