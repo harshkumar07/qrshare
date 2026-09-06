@@ -126,9 +126,9 @@ export default function App() {
         const pendingCandidates = pendingReceiverCandidatesRef.current.splice(0);
         void (async () => {
           try {
-            await peerRef.current?.acceptOffer(message.sdp!);
+            const sdp = await peerRef.current?.acceptOffer(message.sdp!);
             for (const candidate of pendingCandidates) await peerRef.current?.addCandidate(candidate);
-            const sdp = await peerRef.current?.createAnswer;
+            if (sdp) sendSignal({ type: 'answer', sdp });
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Could not accept offer.');
           }
