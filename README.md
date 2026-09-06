@@ -1,225 +1,175 @@
 # QRShare
 
-QRShare is a fast, simple peer-to-peer file sharing application designed to make transferring files between nearby devices as easy as scanning a QR code.
+QRShare is a browser-based peer-to-peer file sharing application. A sender creates a short-lived session, shows a QR code, and a receiver scans it to establish a WebRTC connection and transfer files directly between devices.
 
-## Vision
-
-The goal is to remove the friction from local file sharing. Instead of uploading a file to a cloud service, creating an account, copying a long link, or manually configuring a connection, one device can create a short-lived QR code and another device can scan it to establish a secure transfer session.
-
-## Core Idea
-
-**Device A (Sender)**
-1. Opens QRShare.
-2. Selects one or more files.
-3. QRShare creates a temporary transfer session.
-4. A QR code is displayed containing the information needed for the receiving device to join the session.
-5. The sender waits for the receiver to connect.
-6. Files are transferred directly between the devices whenever the network/browser environment allows it.
-
-**Device B (Receiver)**
-1. Opens QRShare.
-2. Scans the sender's QR code.
-3. Joins the temporary transfer session.
-4. Sees the files and transfer details.
-5. Accepts the transfer.
-6. Receives the files directly from the sender.
-
-## Product Principles
-
-- **QR-first:** connecting two devices should take a scan rather than copying codes or typing URLs.
-- **Peer-to-peer:** files should move directly between devices where technically possible, avoiding unnecessary cloud storage.
-- **No account required:** local sharing should not require registration or login.
-- **Temporary sessions:** connection information should expire and should not become a permanent public file link.
-- **Privacy focused:** file contents should not be uploaded to a central server merely to enable sharing.
-- **Fast:** support large files through streaming/chunked transfer instead of loading an entire file into memory.
-- **Simple UX:** sender and receiver should always understand what is happening and who is connected.
-- **Resumable where possible:** interrupted transfers should have a path to resume instead of always restarting from zero.
-
-## Planned Features
-
-### Initial MVP
-
-- Sender and receiver flows.
-- File and folder selection where supported by the browser.
-- Dynamic QR code generation.
-- QR scanning using the device camera.
-- Temporary transfer/session IDs.
-- Peer connection establishment.
-- Direct file transfer using browser-supported peer-to-peer technology.
-- Transfer progress for individual files and the overall session.
-- File metadata such as name, size, and type.
-- Accept/reject controls on the receiving device.
-- Cancel transfer and disconnect controls.
-- Success and failure states.
-- Responsive desktop and mobile UI.
-
-### Transfer Architecture
-
-The preferred architecture is WebRTC-based peer-to-peer communication. A lightweight signaling layer will be used only to help two peers discover and establish their connection. Once the peers are connected, file data should travel over the peer connection rather than through the signaling service.
-
-The QR code should contain only the minimum information needed to join the temporary session, such as a session identifier and connection/signaling information. It should not contain the file itself.
-
-Large files should be transferred as chunks with backpressure so the application does not need to load the complete file into browser memory. The protocol should carry enough metadata to validate ordering, completion, and integrity.
-
-## Security & Privacy
-
-QRShare is intended for private, nearby file sharing, but a QR code is effectively a capability to attempt to join a session. Therefore:
-
-- Session identifiers must be unpredictable.
-- Sessions should expire automatically.
-- A session should not be reusable indefinitely.
-- The receiver should explicitly accept incoming transfers.
-- File metadata should be shown before acceptance where possible.
-- The application should never expose unnecessary file contents to the signaling server.
-- Peer connections should use WebRTC's built-in encrypted transport.
-- The implementation must avoid putting sensitive file data into URLs, QR payloads, logs, or analytics.
-- Transfer integrity should be checked so corrupted/incomplete files are not silently presented as successful.
-
-## User Experience
-
-### Sender
-
-The sender should have a clear primary action such as **Send files**. After selecting files, QRShare should immediately present a large, easy-to-scan QR code together with a short status such as:
-
-> Waiting for receiver…
-
-After a receiver joins:
-
-> Receiver connected — ready to send
-
-During transfer, show progress, speed, transferred size, remaining size, and an option to cancel.
-
-### Receiver
-
-The receiver should have a clear primary action such as **Scan QR code**. After scanning, QRShare should display the sender/session information and selected files before asking for confirmation.
-
-During transfer, show clear progress and completion status. The receiver should never be left wondering whether a transfer is still running.
-
-## Technology Direction
-
-The project should start as a modern web application so it works across common desktop and mobile browsers without requiring users to install a native application.
-
-Potential core technologies:
-
-- React + TypeScript for the frontend.
-- WebRTC DataChannel for peer-to-peer data transfer.
-- A small Node.js/TypeScript signaling service for session discovery and WebRTC signaling.
-- A QR generation library for creating session QR codes.
-- A browser QR scanning library using the camera.
-- Web APIs such as File, Blob, Streams, and IndexedDB where useful.
-
-The exact libraries can be selected during implementation based on browser compatibility, maintenance, bundle size, and security.
-
-## High-Level Flow
+## Current architecture
 
 ```text
-Sender Browser
-    |
-    | 1. Select files
-    v
-QRShare Session
-    |
-    | 2. Generate temporary session
-    v
-QR Code
-    |
-    | 3. Scan
-    v
-Receiver Browser
-    |
-    | 4. Join/signaling
-    +--------------------+
-                         |
-                    WebRTC setup
-                         |
-                         v
-              Direct P2P DataChannel
-                         |
-              Chunked file transfer
-                         |
-              Receiver downloads file
+                     HTTPS / WSS
+Sender Browser ────────────────┐
+                               │
+Receiver Browser ──────────────┤
+                               ▼
+                         Next.js on Vercel
+                         ├── React UI
+                         ├── QR generation/scanning
+                         └── WebSocket signaling
+                               │
+                               │ SDP / ICE only
+                               ▼
+                    WebRTC DataChannel
+                       │            │
+                       └── file data ──► Receiver
 ```
 
-## Signaling vs File Data
+The signaling layer coordinates the WebRTC handshake. File bytes are not sent through the signaling service.
 
-The signaling server is **not** intended to be a file-storage server.
+## Technology
 
-It is responsible for short-lived coordination such as:
+- Next.js App Router + React + TypeScript.
+- WebRTC `RTCDataChannel` for peer-to-peer file transfer.
+- Vercel WebSocket Functions for signaling in production.
+- `html5-qrcode` for browser camera scanning.
+- `qrcode` for QR generation.
+- Shared TypeScript protocol package under `packages/protocol`.
 
-- Creating a session.
-- Allowing a receiver to join using the session information.
-- Exchanging WebRTC offer/answer information.
-- Exchanging ICE candidates when required.
-- Reporting connection/session state.
+The web application was migrated from Vite to Next.js so the frontend and the Vercel WebSocket signaling endpoint can live in the same deployment.
 
-It should not receive or permanently store the files being transferred.
-
-## Reliability
-
-The implementation should account for real-world conditions:
-
-- Large files.
-- Multiple files in one transfer.
-- Slow connections.
-- Temporary connection drops.
-- Browser tab suspension.
-- Receiver rejecting a transfer.
-- Sender cancelling a transfer.
-- Duplicate or stale session QR codes.
-- Invalid/expired QR payloads.
-- Transfer corruption or incomplete chunks.
-
-The protocol should have explicit session and transfer states rather than relying only on UI state.
-
-## Suggested Repository Structure
+## Repository structure
 
 ```text
 qrshare/
 ├── apps/
-│   ├── web/                 # React + TypeScript client
-│   └── signaling/           # Node.js signaling service
+│   ├── web/
+│   │   ├── app/
+│   │   │   ├── api/ws/route.ts   # Vercel WebSocket signaling endpoint
+│   │   │   ├── layout.tsx
+│   │   │   └── page.tsx
+│   │   └── src/
+│   │       ├── App.tsx            # Client UI and session flow
+│   │       ├── qr.ts
+│   │       ├── scanner.tsx
+│   │       └── webrtc.ts           # WebRTC transfer layer
+│   └── signaling/                  # Standalone Node signaling server for local/fallback use
 ├── packages/
-│   ├── protocol/            # Shared message/protocol types
-│   └── shared/              # Shared utilities and validation
-├── README.md
+│   └── protocol/                   # Shared signaling/file-transfer types
 ├── package.json
-└── ...
+└── README.md
 ```
 
-This structure can evolve as implementation begins; it is a starting point rather than a rigid requirement.
+## Local development
 
-## MVP Success Criteria
+Install dependencies from the repository root:
 
-QRShare's first usable version should allow two people with nearby devices to:
+```bash
+npm install
+```
 
-1. Open the application without creating accounts.
-2. Select a file on the sender device.
-3. Display a QR code.
-4. Scan that QR code from the receiver device.
-5. Establish a peer connection.
-6. Confirm the incoming file.
-7. Transfer the file directly between peers.
-8. See reliable progress.
-9. Receive the completed file successfully.
-10. End/expire the session after the transfer.
+Run the Next.js frontend:
 
-## Future Ideas
+```bash
+npm run dev:web
+```
 
-- Multi-device receiving.
-- Multiple simultaneous transfers.
-- Folder transfer and automatic ZIP packaging where necessary.
-- Transfer history stored locally on the device.
-- Optional passcode protection in addition to the QR code.
-- Optional end-to-end application-level encryption on top of WebRTC.
-- Resume interrupted large transfers.
-- Native mobile/desktop clients using the same protocol.
-- Local-network discovery as an alternative to QR scanning.
-- Share text, links, and clipboard content in addition to files.
-- Drag-and-drop sending.
-- Transfer speed optimization and adaptive chunk sizing.
+The local browser app defaults to the existing standalone signaling server at `ws://localhost:8787`. In another terminal run:
 
-## Status
+```bash
+npm run dev:signaling
+```
 
-**Current stage: Project definition / initial implementation.**
+This keeps local development reliable because Vercel's WebSocket upgrade runtime is provided by Vercel Functions rather than ordinary `next dev`.
 
-The repository currently contains the product direction and technical foundation described above. Implementation should prioritize a working end-to-end file transfer over visual polish: sender → QR → receiver → peer connection → file transfer → verified completion.
+## Production deployment on Vercel
+
+Create a Vercel project from this repository and set the project **Root Directory** to:
+
+```text
+apps/web
+```
+
+Use the Next.js framework preset. The build command is:
+
+```text
+npm run build
+```
+
+The production application automatically uses:
+
+```text
+wss://<your-domain>/api/ws
+```
+
+unless `NEXT_PUBLIC_SIGNALING_URL` is explicitly set.
+
+Vercel added WebSocket support for Vercel Functions in June 2026. The WebSocket endpoint is implemented in `apps/web/app/api/ws/route.ts`. See the Vercel WebSocket documentation for current platform limits and deployment behavior.
+
+### Important scaling note
+
+The current signaling route keeps session state in the Function instance's memory. This is suitable for the first MVP and for controlled testing, but Vercel does not guarantee that separate WebSocket connections will land on the same Function instance. For production-scale signaling, move session coordination to shared durable state such as Redis. The WebRTC file transfer itself remains peer-to-peer.
+
+## QR/session flow
+
+1. Sender opens QRShare and selects files.
+2. Sender creates a temporary signaling session.
+3. QRShare generates a QR payload containing the session ID and signaling URL.
+4. Receiver scans the QR code.
+5. Receiver joins the signaling session.
+6. Sender creates a WebRTC offer.
+7. Receiver returns an answer.
+8. Both peers exchange ICE candidates through signaling.
+9. The WebRTC DataChannel becomes connected.
+10. Receiver approves the incoming transfer.
+11. File metadata and chunks travel over the DataChannel.
+12. Receiver reconstructs the file locally and provides a download link.
+
+## File transfer design
+
+Files are transferred in chunks with DataChannel backpressure. The receiver collects chunks and verifies that the number of received bytes matches the advertised file size before exposing the completed file.
+
+The signaling service should never receive the file bytes.
+
+## Security and privacy
+
+- Session IDs are generated with cryptographically strong random UUIDs.
+- Sessions expire after a short TTL.
+- A session is limited to two peers.
+- The receiver explicitly accepts an incoming transfer.
+- File contents are transferred through WebRTC's encrypted transport.
+- File data is not placed in the QR payload.
+- File data is not stored by the signaling layer.
+
+## Current MVP status
+
+Implemented:
+
+- Next.js frontend migration.
+- Sender and receiver flows.
+- QR generation.
+- QR camera scanning.
+- Temporary signaling sessions.
+- WebSocket signaling endpoint for Vercel.
+- WebRTC offer/answer and ICE exchange.
+- Direct DataChannel file transfer.
+- Chunking and backpressure.
+- Multi-file sender flow.
+- Receiver acceptance flow.
+- Transfer progress.
+- Completed-file download.
+
+Next reliability improvements:
+
+1. Shared Redis-backed signaling state for multi-instance Vercel deployments.
+2. TURN servers for networks where direct WebRTC connectivity fails.
+3. Transfer integrity hashes.
+4. Better reconnect/resume behavior for interrupted large transfers.
+5. Automated two-browser/device end-to-end tests.
+
+## Product principles
+
+- QR-first connection.
+- No account required.
+- Peer-to-peer file movement.
+- Temporary sessions.
+- No unnecessary server-side file storage.
+- Clear sender/receiver state.
+- Large-file friendly chunked transfer.
