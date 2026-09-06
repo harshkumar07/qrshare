@@ -1,0 +1,21 @@
+{
+  "name": "@qrshare/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "html5-qrcode": "latest",
+    "qrcode": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest",
+    "typescript": "latest"
+  },
+  "devDependencies": {}
+}
