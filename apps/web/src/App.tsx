@@ -8,14 +8,11 @@ import './styles.css';
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'ws://localhost:8787';
 
 type IncomingFile = { name: string; size: number; mime: string; received: number; chunks: ArrayBuffer[] };
-
 type ServerMessage = { type: string; sessionId?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit; message?: string };
 
 function connect(url: string, onMessage: (message: ServerMessage) => void, onError: (message: string) => void) {
   const ws = new WebSocket(url);
-  ws.onmessage = (event) => {
-    try { onMessage(JSON.parse(event.data) as ServerMessage); } catch { onError('Received invalid signaling data.'); }
-  };
+  ws.onmessage = (event) => { try { onMessage(JSON.parse(event.data) as ServerMessage); } catch { onError('Received invalid signaling data.'); } };
   ws.onerror = () => onError('Signaling connection failed.');
   return ws;
 }
@@ -34,16 +31,41 @@ export default function App() {
   const peerRef = useRef<PeerConnection>();
   const acceptedRef = useRef(false);
   const incomingRef = useRef<IncomingFile>();
+  const pendingFilesRef = useRef<File[]>([]);
+  const sendingRef = useRef(false);
 
   const sendSignal = useCallback((message: SignalMessage | Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(message));
+  }, []);
+
+  const continueSending = useCallback(async () => {
+    if (!peerRef.current || !pendingFilesRef.current.length || sendingRef.current) return;
+    sendingRef.current = true;
+    const pending = pendingFilesRef.current;
+    const total = pending.reduce((sum, file) => sum + file.size, 0);
+    let sentTotal = 0;
+    try {
+      for (const file of pending) {
+        const id = peerRef.current.sendFileHeader(file);
+        setStatus(`Sending ${file.name}…`);
+        await peerRef.current.sendFileData(file, id, (sent) => setProgress(Math.round(((sentTotal + sent) / Math.max(total, 1)) * 100)));
+        sentTotal += file.size;
+      }
+      setProgress(100);
+      setStatus('All files sent.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'File transfer failed.');
+    } finally {
+      sendingRef.current = false;
+      pendingFilesRef.current = [];
+    }
   }, []);
 
   const makePeer = useCallback((initiator: boolean) => {
     peerRef.current?.close();
     peerRef.current = new PeerConnection({
       onState: (state) => {
-        if (state === 'connected') setStatus('Peer connected. Waiting for transfer approval.');
+        if (state === 'connected') setStatus('Peer connected.');
         else if (state === 'failed') setStatus('Peer connection failed.');
       },
       onSignal: sendSignal,
@@ -59,13 +81,11 @@ export default function App() {
         if (message.type === 'accept') {
           acceptedRef.current = true;
           setAccepted(true);
-          setStatus('Transfer accepted. You can send the selected files.');
+          setStatus('Transfer accepted. Sending…');
+          void continueSending();
           return;
         }
-        if (message.type === 'reject' || message.type === 'cancel') {
-          setStatus('Transfer was cancelled.');
-          return;
-        }
+        if (message.type === 'reject' || message.type === 'cancel') { setStatus('Transfer was cancelled.'); return; }
         if (message.type === 'file-start') {
           const next: IncomingFile = { name: message.name, size: message.size, mime: message.mime, received: 0, chunks: [] };
           incomingRef.current = next;
@@ -73,17 +93,14 @@ export default function App() {
           setStatus(`Incoming file: ${message.name}`);
         } else if (message.type === 'file-end') {
           const current = incomingRef.current;
-          if (!current || current.received !== current.size) {
-            setError('Transfer ended before all file bytes arrived.');
-            return;
-          }
+          if (!current || current.received !== current.size) { setError('Transfer ended before all file bytes arrived.'); return; }
           const url = URL.createObjectURL(new Blob(current.chunks, { type: current.mime }));
           setDownloadUrl(url);
           setStatus('Transfer complete.');
         }
       },
     }, initiator);
-  }, [sendSignal]);
+  }, [continueSending, sendSignal]);
 
   const startSender = useCallback(() => {
     setMode('sender'); setError(undefined); setAccepted(false); acceptedRef.current = false; setStatus('Creating session…');
@@ -96,11 +113,9 @@ export default function App() {
         makePeer(true);
         void peerRef.current?.createOffer().then((sdp) => sendSignal({ type: 'offer', sdp }));
         setStatus('Receiver found. Establishing secure connection…');
-      } else if (message.type === 'answer' && message.sdp) {
-        void peerRef.current?.acceptAnswer(message.sdp);
-      } else if (message.type === 'ice-candidate' && message.candidate) {
-        void peerRef.current?.addCandidate(message.candidate);
-      } else if (message.type === 'error') setError(message.message ?? 'Signaling error.');
+      } else if (message.type === 'answer' && message.sdp) void peerRef.current?.acceptAnswer(message.sdp);
+      else if (message.type === 'ice-candidate' && message.candidate) void peerRef.current?.addCandidate(message.candidate);
+      else if (message.type === 'error') setError(message.message ?? 'Signaling error.');
     }, setError);
     ws.onopen = () => ws.send(JSON.stringify({ type: 'create' }));
     wsRef.current = ws;
@@ -127,63 +142,47 @@ export default function App() {
 
   useEffect(() => () => { peerRef.current?.close(); wsRef.current?.close(); }, []);
 
-  const sendFiles = async () => {
-    if (!peerRef.current || !files.length || !acceptedRef.current) return;
-    setStatus('Sending files…');
-    const total = files.reduce((sum, file) => sum + file.size, 0);
-    let sentTotal = 0;
-    for (const file of files) {
-      await peerRef.current.sendFile(file, (sent) => setProgress(Math.round(((sentTotal + sent) / total) * 100)));
-      sentTotal += file.size;
+  const prepareSend = () => {
+    if (!peerRef.current || !files.length) return;
+    pendingFilesRef.current = files;
+    setProgress(0);
+    if (acceptedRef.current) void continueSending();
+    else {
+      const first = files[0];
+      peerRef.current.sendFileHeader(first);
+      setStatus(`Waiting for receiver to approve ${first.name}…`);
     }
-    setProgress(100); setStatus('All files sent.');
   };
 
   const acceptIncoming = () => {
     peerRef.current?.sendControl({ type: 'accept' });
-    setStatus('Accepted. Sender can now transfer the file.');
+    setStatus('Accepted. Sender is transferring the file.');
   };
 
   const reset = () => {
     peerRef.current?.close(); wsRef.current?.close();
     if (downloadUrl) URL.revokeObjectURL(downloadUrl);
-    setMode('home'); setQr(undefined); setIncoming(undefined); incomingRef.current = undefined; setDownloadUrl(undefined); setProgress(0); setAccepted(false); acceptedRef.current = false; setError(undefined); setStatus('Choose how to connect.');
+    pendingFilesRef.current = []; incomingRef.current = undefined; sendingRef.current = false;
+    setMode('home'); setQr(undefined); setIncoming(undefined); setDownloadUrl(undefined); setProgress(0); setAccepted(false); acceptedRef.current = false; setError(undefined); setStatus('Choose how to connect.');
   };
 
-  return <main className="app">
-    <section className="card">
-      <div className="brand">QRShare</div>
-      <p className="tagline">Send files directly between nearby devices.</p>
-      {error && <div className="error">{error}</div>}
-
-      {mode === 'home' && <div className="actions">
-        <button onClick={startSender}>Send files</button>
-        <button className="secondary" onClick={() => { setMode('receiver'); setStatus('Choose how to receive.'); }}>Receive files</button>
-      </div>}
-
-      {mode === 'sender' && <>
-        <label className="file-picker">Select files
-          <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-        </label>
-        {files.length > 0 && <div className="files">{files.map((f) => <div key={`${f.name}-${f.size}`}>{f.name} · {(f.size / 1024 / 1024).toFixed(2)} MB</div>)}</div>}
-        {qr && <img className="qr" src={qr} alt="Scan this QR code to receive the files" />}
-        <p className="status">{status}</p>
-        {accepted && <p className="accepted">Receiver accepted the transfer.</p>}
-        {progress > 0 && <progress max="100" value={progress} />}
-        <button disabled={!files.length || !accepted} onClick={() => void sendFiles()}>Send selected files</button>
-      </>}
-
-      {mode === 'receiver' && !downloadUrl && <>
-        {(status === 'Choose how to receive.' || status === 'Joining session…' || status === 'Joined. Waiting for sender…') && <>
-          <Scanner onScan={onScan} />
-          <p className="status">Point your camera at the sender's QR code.</p>
-          <textarea placeholder="Or paste the QR payload here" onChange={(e) => { const text = e.target.value.trim(); if (!text) return; try { joinSession(parseSessionQr(text)); } catch { /* wait until payload is complete */ } }} />
-        </>}
-        {incoming && <div className="incoming"><strong>{incoming.name}</strong><span>{(incoming.size / 1024 / 1024).toFixed(2)} MB</span><span>{Math.round((incoming.received / incoming.size) * 100)}% received</span><button onClick={acceptIncoming}>Accept transfer</button></div>}
-      </>}
-
-      {downloadUrl && <div className="complete"><p>File received successfully.</p><a href={downloadUrl} download={incoming?.name}>Download {incoming?.name}</a></div>}
-      {mode !== 'home' && <button className="back" onClick={reset}>Start over</button>}
-    </section>
-  </main>;
+  return <main className="app"><section className="card">
+    <div className="brand">QRShare</div><p className="tagline">Send files directly between nearby devices.</p>
+    {error && <div className="error">{error}</div>}
+    {mode === 'home' && <div className="actions"><button onClick={startSender}>Send files</button><button className="secondary" onClick={() => { setMode('receiver'); setStatus('Choose how to receive.'); }}>Receive files</button></div>}
+    {mode === 'sender' && <>
+      <label className="file-picker">Select files<input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} /></label>
+      {files.length > 0 && <div className="files">{files.map((f) => <div key={`${f.name}-${f.size}`}>{f.name} · {(f.size / 1024 / 1024).toFixed(2)} MB</div>)}</div>}
+      {qr && <img className="qr" src={qr} alt="Scan this QR code to receive the files" />}
+      <p className="status">{status}</p>{accepted && <p className="accepted">Receiver approved the transfer.</p>}
+      {progress > 0 && <progress max="100" value={progress} />}
+      <button disabled={!files.length || status !== 'Peer connected.' || sendingRef.current} onClick={prepareSend}>Send selected files</button>
+    </>}
+    {mode === 'receiver' && !downloadUrl && <>
+      {(status === 'Choose how to receive.' || status === 'Joining session…' || status === 'Joined. Waiting for sender…') && <><Scanner onScan={onScan}/><p className="status">Point your camera at the sender's QR code.</p><textarea placeholder="Or paste the QR payload here" onChange={(e) => { const text = e.target.value.trim(); if (!text) return; try { joinSession(parseSessionQr(text)); } catch { /* incomplete payload */ } }}/></>}
+      {incoming && <div className="incoming"><strong>{incoming.name}</strong><span>{(incoming.size / 1024 / 1024).toFixed(2)} MB</span><span>{Math.round((incoming.received / Math.max(incoming.size, 1)) * 100)}% received</span><button onClick={acceptIncoming}>Accept transfer</button></div>}
+    </>}
+    {downloadUrl && <div className="complete"><p>File received successfully.</p><a href={downloadUrl} download={incoming?.name}>Download {incoming?.name}</a></div>}
+    {mode !== 'home' && <button className="back" onClick={reset}>Start over</button>}
+  </section></main>;
 }
