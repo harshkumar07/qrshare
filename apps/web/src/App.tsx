@@ -5,7 +5,7 @@ import { parseSessionQr, renderSessionQr } from './qr';
 import { Scanner } from './scanner';
 import './styles.css';
 
-const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'ws://localhost:8787';
+const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? (window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.hostname}:8787`);
 type IncomingFile = { name: string; size: number; mime: string; received: number; chunks: ArrayBuffer[] };
 type ServerMessage = { type: string; sessionId?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit; message?: string };
 
@@ -54,9 +54,8 @@ export default function App() {
         sentTotal += file.size;
       }
       setProgress(100); setStatus('All files sent.');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'File transfer failed.');
-    } finally { sendingRef.current = false; pendingFilesRef.current = []; }
+    } catch (e) { setError(e instanceof Error ? e.message : 'File transfer failed.'); }
+    finally { sendingRef.current = false; pendingFilesRef.current = []; }
   }, []);
 
   const makePeer = useCallback((initiator: boolean) => {
@@ -110,17 +109,14 @@ export default function App() {
   }, [makePeer, sendSignal]);
 
   const onScan = useCallback((text: string) => { try { joinSession(parseSessionQr(text)); } catch (e) { setError(e instanceof Error ? e.message : 'Invalid QR code.'); } }, [joinSession]);
-
   useEffect(() => () => { peerRef.current?.close(); wsRef.current?.close(); if (downloadUrl) URL.revokeObjectURL(downloadUrl); }, [downloadUrl]);
 
   const prepareSend = () => {
     if (!peerRef.current || !files.length) return;
-    pendingFilesRef.current = files;
-    setProgress(0);
+    pendingFilesRef.current = files; setProgress(0);
     if (acceptedRef.current) void continueSending();
     else { announcedIdRef.current = peerRef.current.sendFileHeader(files[0]); setStatus(`Waiting for receiver to approve ${files[0].name}…`); }
   };
-
   const acceptIncoming = () => { peerRef.current?.sendControl({ type: 'accept' }); setStatus('Accepted. Sender is transferring the file.'); };
   const reset = () => {
     peerRef.current?.close(); wsRef.current?.close(); if (downloadUrl) URL.revokeObjectURL(downloadUrl);
