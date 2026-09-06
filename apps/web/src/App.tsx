@@ -19,19 +19,19 @@ function connect(url: string, onMessage: (message: ServerMessage) => void, onErr
 export default function App() {
   const [mode, setMode] = useState<'home' | 'sender' | 'receiver'>('home');
   const [status, setStatus] = useState('Choose how to connect.');
-  const [qr, setQr] = useState<string>();
+  const [qr, setQr] = useState<string | undefined>(undefined);
   const [files, setFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
   const [accepted, setAccepted] = useState(false);
-  const [incoming, setIncoming] = useState<IncomingFile>();
-  const [downloadUrl, setDownloadUrl] = useState<string>();
-  const [error, setError] = useState<string>();
-  const wsRef = useRef<WebSocket>();
-  const peerRef = useRef<PeerConnection>();
+  const [incoming, setIncoming] = useState<IncomingFile | undefined>(undefined);
+  const [downloadUrl, setDownloadUrl] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const wsRef = useRef<WebSocket | undefined>(undefined);
+  const peerRef = useRef<PeerConnection | undefined>(undefined);
   const acceptedRef = useRef(false);
-  const incomingRef = useRef<IncomingFile>();
+  const incomingRef = useRef<IncomingFile | undefined>(undefined);
   const pendingFilesRef = useRef<File[]>([]);
-  const announcedIdRef = useRef<string>();
+  const announcedIdRef = useRef<string | undefined>(undefined);
   const sendingRef = useRef(false);
 
   const sendSignal = useCallback((message: SignalMessage | Record<string, unknown>) => {
@@ -84,12 +84,9 @@ export default function App() {
   const startSender = useCallback(() => {
     setMode('sender'); setError(undefined); setAccepted(false); acceptedRef.current = false; setStatus('Creating session…');
     const ws = connect(SIGNALING_URL, (message) => {
-      if (message.type === 'created' && message.sessionId) {
-        void renderSessionQr({ v: 1, sessionId: message.sessionId, signalingUrl: SIGNALING_URL }).then(setQr);
-        setStatus('Waiting for receiver to scan…');
-      } else if (message.type === 'peer-joined') {
-        makePeer(true); void peerRef.current?.createOffer().then((sdp) => sendSignal({ type: 'offer', sdp })); setStatus('Receiver found. Establishing secure connection…');
-      } else if (message.type === 'answer' && message.sdp) void peerRef.current?.acceptAnswer(message.sdp);
+      if (message.type === 'created' && message.sessionId) { void renderSessionQr({ v: 1, sessionId: message.sessionId, signalingUrl: SIGNALING_URL }).then(setQr); setStatus('Waiting for receiver to scan…'); }
+      else if (message.type === 'peer-joined') { makePeer(true); void peerRef.current?.createOffer().then((sdp) => sendSignal({ type: 'offer', sdp })); setStatus('Receiver found. Establishing secure connection…'); }
+      else if (message.type === 'answer' && message.sdp) void peerRef.current?.acceptAnswer(message.sdp);
       else if (message.type === 'ice-candidate' && message.candidate) void peerRef.current?.addCandidate(message.candidate);
       else if (message.type === 'error') setError(message.message ?? 'Signaling error.');
     }, setError);
