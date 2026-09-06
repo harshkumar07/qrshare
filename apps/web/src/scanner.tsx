@@ -1,14 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 
-export function Scanner({ onScan }: { onScan: (text: string) => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-
+export function Scanner({ onScan, onError }: { onScan: (text: string) => void; onError?: (message: string) => void }) {
   useEffect(() => {
     const elementId = 'qrshare-reader';
     const scanner = new Html5Qrcode(elementId);
     let stopped = false;
-    scanner.start(
+    void scanner.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 250, height: 250 } },
       (decoded) => {
@@ -18,13 +16,8 @@ export function Scanner({ onScan }: { onScan: (text: string) => void }) {
         }
       },
       () => undefined,
-    ).catch(() => undefined);
-
-    return () => {
-      stopped = true;
-      void scanner.stop().catch(() => undefined);
-    };
-  }, [onScan]);
-
-  return <div id="qrshare-reader" ref={ref} className="scanner" />;
+    ).catch(() => { if (!stopped) onError?.('Camera could not start. Check camera permission and HTTPS.'); });
+    return () => { stopped = true; void scanner.stop().catch(() => undefined); };
+  }, [onScan, onError]);
+  return <div id="qrshare-reader" className="scanner" />;
 }

@@ -2,6 +2,8 @@
   "name": "qrshare",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "npm@11.5.2",
+  "engines": { "node": ">=20.9.0" },
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",

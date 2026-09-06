@@ -16,7 +16,16 @@ export class PeerConnection {
 
   constructor(callbacks: PeerCallbacks, initiator: boolean) {
     this.callbacks = callbacks;
-    this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    this.pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        ...(process.env.NEXT_PUBLIC_TURN_URL ? [{
+          urls: process.env.NEXT_PUBLIC_TURN_URL,
+          username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+          credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
+        }] : []),
+      ],
+    });
     this.pc.onicecandidate = (event) => {
       if (event.candidate) callbacks.onSignal({ type: 'ice-candidate', candidate: event.candidate.toJSON() });
     };
@@ -36,10 +45,11 @@ export class PeerConnection {
       if (typeof event.data === 'string') {
         const message = decodeControl(event.data);
         if (message) this.callbacks.onControl(message);
+        else this.callbacks.onError(new Error('Invalid file-transfer control message.'));
       } else if (event.data instanceof ArrayBuffer) {
         this.callbacks.onChunk(event.data);
       } else if (event.data instanceof Blob) {
-        void event.data.arrayBuffer().then((buffer) => this.callbacks.onChunk(buffer));
+        void event.data.arrayBuffer().then((buffer) => this.callbacks.onChunk(buffer)).catch(() => this.callbacks.onError(new Error('Could not read received chunk.')));
       }
     };
   }
@@ -52,6 +62,8 @@ export class PeerConnection {
 
   async acceptOffer(sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
     await this.pc.setRemoteDescription(sdp);
+    for (const candidate of this.pendingCandidates) await this.pc.addIceCandidate(candidate);
+    this.pendingCandidates = [];
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
     return answer;
@@ -86,9 +98,10 @@ export class PeerConnection {
     for (let index = 0; index < chunks; index++) {
       const buffer = await file.slice(index * CHUNK_SIZE, Math.min(file.size, (index + 1) * CHUNK_SIZE)).arrayBuffer();
       while (this.channel.bufferedAmount > CHUNK_SIZE * 8) {
-        await new Promise<void>((resolve) => {
-          const handler = () => { this.channel?.removeEventListener('bufferedamountlow', handler); resolve(); };
-          this.channel?.addEventListener('bufferedamountlow', handler);
+        await new Promise<void>((resolve, reject) => {
+          const timeout = window.setTimeout(() => reject(new Error('Transfer stalled.')), 30_000);
+          const handler = () => { window.clearTimeout(timeout); this.channel?.removeEventListener('bufferedamountlow', handler); resolve(); };
+          this.channel?.addEventListener('bufferedamountlow', handler, { once: true });
         });
       }
       this.channel.send(buffer);

@@ -2,11 +2,7 @@
   "name": "@qrshare/web",
   "private": true,
   "version": "0.1.0",
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "test": "tsc --noEmit"
-  },
+  "scripts": { "dev": "next dev", "build": "next build", "test": "tsc --noEmit" },
   "dependencies": {
     "@qrshare/protocol": "*",
     "@vercel/functions": "latest",
